@@ -5,16 +5,38 @@ import requests
 from lxml import html
 import unicodecsv as csv
 import argparse
+import datetime
 
-def parse_listing(keyword,place_city, place_province):
+def parameters():
+	"""
+	Function to set parameters for search on yellow pages. Set parameter to True to include in search. Must have
+	at least one true for each parameter
+
+	"""
+	keyword_dict = {
+		'restaurant': True
+	}
+
+	city_province_dict = {
+		'toronto+ON': True
+	}
+
+	if sum(keyword_dict.values()) == 0 or sum(city_province_dict.values()) == 0:
+		sys.exit("Ensure you have specified at least one keyword and city, province")
+	else:
+		return keyword_dict, city_province_dict
+
+def parse_listing(keyword, place_city_province, pagination=1):
 	"""
 	
 	Function to process yellowpage listing page 
 	: param keyword: search query
-    : param place : place name
+    : param place_city : place city name
+    : param place_province: place province name
 
 	"""
-	url = "https://www.yellowpages.ca/search/si/1/{0}/{1}+{2}".format(keyword, place_city, place_province)
+
+	url = "https://www.yellowpages.ca/search/si/{2}/{0}/{1}".format(keyword, place_city_province, pagination)
 	# /pagenumber/keyword/placecity+placeprovince
 
 	print("retrieving ",url)
@@ -33,80 +55,57 @@ def parse_listing(keyword,place_city, place_province):
 	for retry in range(10):
 		try:
 			response = requests.get(url,verify=False, headers = headers )
-			print("parsing page")
+
 			if response.status_code==200:
 				parser = html.fromstring(response.text)
-
-				print (parser)
 
 				#making links absolute
 				base_url = "https://www.yellowpages.ca"
 				parser.make_links_absolute(base_url)
 
-				XPATH_LISTINGS = "//div[contains(@class, 'listing listing--bottomcta placement')]"
-
+				XPATH_LISTINGS = "//div[contains(@class, 'listing listing--bottomcta placement')]" #listings
 				listings = parser.xpath(XPATH_LISTINGS)
 				scraped_results = []
 
 				for results in listings:
 
 					XPATH_BUSINESS_NAME = ".//a[contains(@class, 'listing__name--link')]//text()"
-
-					# XPATH_BUSSINESS_PAGE = ".//a[@class='business-name']//@href" 
-					# XPATH_TELEPHONE = ".//div[@itemprop='telephone']//text()"
-					# XPATH_ADDRESS = ".//div[@class='info']//div//p[@itemprop='address']"
-					# XPATH_STREET = ".//div[@class='info']//div//p[@itemprop='address']//span[@itemprop='streetAddress']//text()"
-					# XPATH_LOCALITY = ".//div[@class='info']//div//p[@itemprop='address']//span[@itemprop='addressLocality']//text()"
-					# XPATH_REGION = ".//div[@class='info']//div//p[@itemprop='address']//span[@itemprop='addressRegion']//text()"
-					# XPATH_ZIP_CODE = ".//div[@class='info']//div//p[@itemprop='address']//span[@itemprop='postalCode']//text()"
-					# XPATH_RANK = ".//div[@class='info']//h2[@class='n']/text()"
-					# XPATH_CATEGORIES = ".//div[@class='info']//div[contains(@class,'info-section')]//div[@class='categories']//text()"
-					# XPATH_WEBSITE = ".//div[@class='info']//div[contains(@class,'info-section')]//div[@class='links']//a[contains(@class,'website')]/@href"
-					# XPATH_RATING = ".//div[@class='info']//div[contains(@class,'info-section')]//div[contains(@class,'result-rating')]//span//text()"
+					XPATH_BUSINESS_PAGE = ".//a[contains(@class, 'listing__name--link')]//@href"
+					XPATH_STREET = ".//div[contains(@class, 'listing__address')]//span[@itemprop='address']//span[@itemprop='streetAddress']//text()"
+					XPATH_LOCALITY = ".//div[contains(@class, 'listing__address')]//span[@itemprop='address']//span[@itemprop='addressLocality']//text()"
+					XPATH_REGION = ".//div[contains(@class, 'listing__address')]//span[@itemprop='address']//span[@itemprop='addressRegion']//text()"
+					XPATH_ZIP_CODE = ".//div[contains(@class, 'listing__address')]//span[@itemprop='address']//span[@itemprop='postalCode']//text()"
+					XPATH_WEBSITE = ".//div[contains(@class, 'listing__mlr__root')]//ul/li[4]//@href"
 
 					raw_business_name = results.xpath(XPATH_BUSINESS_NAME)
-					# raw_business_telephone = results.xpath(XPATH_TELEPHONE)	
-					# raw_business_page = results.xpath(XPATH_BUSSINESS_PAGE)
-					# raw_categories = results.xpath(XPATH_CATEGORIES)
-					# raw_website = results.xpath(XPATH_WEBSITE)
-					# raw_rating = results.xpath(XPATH_RATING)
-					# # address = results.xpath(XPATH_ADDRESS)
-					# raw_street = results.xpath(XPATH_STREET)
-					# raw_locality = results.xpath(XPATH_LOCALITY)
-					# raw_region = results.xpath(XPATH_REGION)
-					# raw_zip_code = results.xpath(XPATH_ZIP_CODE)
-					# raw_rank = results.xpath(XPATH_RANK)
+					raw_business_page = results.xpath(XPATH_BUSINESS_PAGE)
+					raw_website = results.xpath(XPATH_WEBSITE)
+					raw_street = results.xpath(XPATH_STREET)
+					raw_locality = results.xpath(XPATH_LOCALITY)
+					raw_region = results.xpath(XPATH_REGION)
+					raw_zip_code = results.xpath(XPATH_ZIP_CODE)
 					
 					business_name = ''.join(raw_business_name).strip() if raw_business_name else None
+					business_page = ''.join(raw_business_page).strip() if raw_business_page else None
+					street = ''.join(raw_street).strip() if raw_street else None
+					website = ''.join(raw_website).strip() if raw_website else None
+					locality = ''.join(raw_locality).replace(',\xa0','').strip() if raw_locality else None
+					region = ''.join(raw_region).strip() if raw_region else None
+					zipcode = ''.join(raw_zip_code).strip() if raw_zip_code else None
 
-					print (business_name)
-					# telephone = ''.join(raw_business_telephone).strip() if raw_business_telephone else None
-					# business_page = ''.join(raw_business_page).strip() if raw_business_page else None
-					# rank = ''.join(raw_rank).replace('.\xa0','') if raw_rank else None
-					# category = ','.join(raw_categories).strip() if raw_categories else None
-					# website = ''.join(raw_website).strip() if raw_website else None
-					# rating = ''.join(raw_rating).replace("(","").replace(")","").strip() if raw_rating else None
-					# street = ''.join(raw_street).strip() if raw_street else None
-					# locality = ''.join(raw_locality).replace(',\xa0','').strip() if raw_locality else None
-					# region = ''.join(raw_region).strip() if raw_region else None
-					# zipcode = ''.join(raw_zip_code).strip() if raw_zip_code else None
-
-
-					# business_details = {
-					# 					'business_name':business_name,
-										# 'telephone':telephone,
-										# 'business_page':business_page,
-										# 'rank':rank,
-										# 'category':category,
-										# 'website':website,
-										# 'rating':rating,
-										# 'street':street,
-										# 'locality':locality,
-										# 'region':region,
-										# 'zipcode':zipcode,
-										# 'listing_url':response.url
-					# }
-					# scraped_results.append(business_details)
+					business_details = {
+										'business_name':business_name,
+										'business_page':business_page,
+										'street': street,
+										'website':website,
+										'street':street,
+										'locality':locality,
+										'region':region,
+										'zipcode':zipcode,
+										'search_category': keyword,
+										'updated_at': datetime.datetime.now()
+					}
+					scraped_results.append(business_details)
 
 				return scraped_results
 
@@ -122,25 +121,40 @@ def parse_listing(keyword,place_city, place_province):
 			print("Failed to process page")
 			return []
 
+# Add pagination
+# Add searched category
+# Add recorded date
+
 
 if __name__=="__main__":
 	
-	argparser = argparse.ArgumentParser()
-	argparser.add_argument('keyword',help = 'Search Keyword')
-	argparser.add_argument('place_city',help = 'Place City Name')
-	argparser.add_argument('place_province', help = 'Place Province Name')
+	# argparser = argparse.ArgumentParser()
+	# argparser.add_argument('keyword',help = 'Search Keyword')
+	# argparser.add_argument('place_city',help = 'Place City Name')
+	# argparser.add_argument('place_province', help = 'Place Province Name')
 	
-	args = argparser.parse_args()
-	keyword = args.keyword
-	place_city = args.place_city
-	place_province = args.place_province
-	scraped_data =  parse_listing(keyword,place_city, place_province)	
+	# args = argparser.parse_args()
+	# keyword = args.keyword
+	# place_city = args.place_city
+	# place_province = args.place_province
+
+	keyword_dict, place_city_province_dict = parameters()
+
+	keyword_list = [key for key, value in keyword_dict.items() if value]
+	place_city_province_list = [key for key, value in place_city_province_dict.items() if value]
+
+	for place_city_province in place_city_province_list:
+		for keyword in keyword_list:
+			scraped_data =  parse_listing(keyword,place_city_province)	
 	
-	if scraped_data:
-		print("Writing scraped data to %s-%s-yellowpages-scraped-data.csv"%(keyword,place_city)) # update
-		with open('%s-%s-yellowpages-scraped-data.csv'%(keyword,place_city),'wb') as csvfile: # updat
-			fieldnames = ['rank','business_name','telephone','business_page','category','website','rating','street','locality','region','zipcode','listing_url']
-			writer = csv.DictWriter(csvfile,fieldnames = fieldnames,quoting=csv.QUOTE_ALL)
-			writer.writeheader()
-			for data in scraped_data:
-				writer.writerow(data)
+			if scraped_data:
+		
+				print("Writing scraped data to %s-%s-yellowpages-scraped-data.csv"%(keyword,place_city_province)) # update
+		
+				with open('%s-%s-yellowpages-scraped-data.csv'%(keyword,place_city_province),'wb') as csvfile: # update
+					fieldnames = scraped_data[0].keys()
+			
+					writer = csv.DictWriter(csvfile,fieldnames = fieldnames,quoting=csv.QUOTE_ALL)
+					writer.writeheader()
+					for data in scraped_data:
+						writer.writerow(data)
